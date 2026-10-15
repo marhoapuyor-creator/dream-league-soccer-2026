@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Football Game Prototype 2026</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#0d1318; --panel:rgba(18,26,35,0.88); --text:#edf4fb; --muted:#b9c7d6; }
+    *{box-sizing:border-box}
+    html,body{margin:0;background:linear-gradient(180deg,#0c1116 0%,#121a20 100%);color:var(--text);font-family:Arial,Helvetica,sans-serif;min-height:100vh;display:flex;justify-content:center;align-items:center}
+    .wrapper{width:980px;background:var(--panel);border:1px solid rgba(255,255,255,0.08);border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,0.38);padding:12px}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:8px 8px 12px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:10px;flex-wrap:wrap}
+    .brand{font-size:20px;font-weight:700}
+    .scorebox{display:flex;gap:12px;align-items:center;font-weight:700;font-size:18px;min-width:180px;justify-content:center}
+    .team-pill{padding:7px 12px;border-radius:999px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,0.09);background:rgba(255,255,255,0.03)}
+    .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+    #scoreText{font-size:28px;letter-spacing:1px;min-width:130px;text-align:center}
+    .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 6px 4px}
+    select,button,input[type=range]{outline:none}
+    select{background:rgba(19,31,40,0.9);border:1px solid rgba(255,255,255,0.08);color:var(--text);border-radius:8px;padding:8px 10px;font-size:14px}
+    button{border:1px solid rgba(255,255,255,0.08);background:linear-gradient(180deg,#2469b5,#1d4f8d);color:white;font-weight:700;border-radius:8px;padding:8px 12px;cursor:pointer}
+    button.secondary{background:linear-gradient(180deg,#2d3d47,#1c2a31)}
+    .time-btn{background:linear-gradient(180deg,#3c4a52,#24343d)}
+    .meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 8px 0;font-size:12px;color:var(--muted)}
+    #game-container{margin-top:10px;width:100%;height:520px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);background:#111b14}
+    #statusText{padding:8px 0 0;font-size:12px;color:var(--muted)}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="topbar">
+      <div class="brand">FC PITCH 2026</div>
+      <div class="scorebox">
+        <span class="team-pill"><span class="dot" style="background:#2d9cdb"></span><span id="homeLabel">Blue FC</span></span>
+        <span id="scoreText">0 - 0</span>
+        <span class="team-pill"><span class="dot" style="background:#ee5668"></span><span id="awayLabel">Red City</span></span>
+      </div>
+      <div class="team-pill"><span id="matchTimeLabel">Match: 18:00</span></div>
+    </div>
+
+    <div class="controls">
+      <select id="homeTeamSelect"></select>
+      <select id="awayTeamSelect"></select>
+      <button id="startBtn">Start Match</button>
+      <button id="resetBtn" class="secondary">Reset</button>
+      <button class="time-btn" data-hour="9">Morning</button>
+      <button class="time-btn" data-hour="15">Afternoon</button>
+      <button class="time-btn" data-hour="21">Night</button>
+      <label style="display:inline-flex;align-items:center;gap:8px;color:var(--muted);">Hour:
+        <input id="hourRange" type="range" min="0" max="23" value="18" />
+        <span id="hourLabel" style="min-width:42px;">18:00</span>
+      </label>
+      <button id="autoBtn" class="secondary">Auto Cycle: Off</button>
+    </div>
+
+    <div class="meta">
+      <div>Controls: WASD move • K kick • Shift sprint • Tab switch player</div>
+      <div>Match Timer: <span id="clockText">01:30</span></div>
+    </div>
+
+    <div id="statusText">Ready for kickoff.</div>
+    <div id="game-container"></div>
+  </div>
+
+  <script>
+    const teamData = [
+      { name: 'Blue FC', primary: 0x2d9cdb, accent: 0x5bc0ff },
+      { name: 'Red City', primary: 0xee5668, accent: 0xff98a5 },
+      { name: 'Green United', primary: 0x37b26c, accent: 0x81e5ab },
+      { name: 'Gold Rovers', primary: 0xf0c653, accent: 0xffe799 },
+      { name: 'Night Hawks', primary: 0x4e5df0, accent: 0x9aa7ff },
+      { name: 'Crimson FC', primary: 0xc94c4f, accent: 0xff918f }
+    ];
+
+    const DEFAULT_HOME = 0;
+    const DEFAULT_AWAY = 1;
+
+    let game;
+    let sceneRef;
+
+    function buildTeamOptions() {
+      const homeSelect = document.getElementById('homeTeamSelect');
+      const awaySelect = document.getElementById('awayTeamSelect');
+      teamData.forEach((team, idx) => {
+        const opt1 = document.createElement('option'); opt1.value = String(idx); opt1.textContent = team.name; if (idx === DEFAULT_HOME) opt1.selected = true; homeSelect.appendChild(opt1);
+        const opt2 = document.createElement('option'); opt2.value = String(idx); opt2.textContent = team.name; if (idx === DEFAULT_AWAY) opt2.selected = true; awaySelect.appendChild(opt2);
+      });
+      homeSelect.addEventListener('change', () => { const s = sceneRef; if (!s) return; s.setTeams(Number(homeSelect.value), Number(awaySelect.value)); });
+      awaySelect.addEventListener('change', () => { const s = sceneRef; if (!s) return; s.setTeams(Number(homeSelect.value), Number(awaySelect.value)); });
+    }
+
+    class FootballScene extends Phaser.Scene {
+      constructor() { super('FootballScene'); }
+      create() {
+        sceneRef = this;
+        this.matchDuration = 90; this.timeRemaining = this.matchDuration; this.isMatchRunning = false; this.scoreHome = 0; this.scoreAway = 0; this.currentHour = 18; this.autoCycle = false;
+        this.homeTeamIndex = DEFAULT_HOME; this.awayTeamIndex = DEFAULT_AWAY;
+        this.createField(); this.createBall(); this.createPlayers(); this.resetPositions(); this.setupInput();
+        this.controlIndex = 0; this.highlightControlledPlayer();
+        this.overlay = this.add.rectangle(0,0,980,520,0x000000,0).setOrigin(0).setDepth(9);
+        this.stadiumLights = this.add.group();
+        this.statusText = document.getElementById('statusText'); this.scoreText = document.getElementById('scoreText'); this.clockText = document.getElementById('clockText'); this.hourLabel = document.getElementById('hourLabel'); this.matchTimeLabel = document.getElementById('matchTimeLabel');
+        this.applyTimeOfDay(this.currentHour); this.updateHUD(); this.setTeams(this.homeTeamIndex, this.awayTeamIndex);
+        this.ballResetTime = 0;
+      }
+
+      createField() {
+        const field = this.add.rectangle(490,260,920,470,0x1d9d59); field.setDepth(-10);
+        const border = this.add.rectangle(490,260,900,450,0x1f8c49); border.setDepth(-9);
+        const g = this.add.graphics(); g.lineStyle(3,0xffffff,0.75); g.strokeRect(40,30,900,460);
+        g.lineStyle(2,0xffffff,0.75); g.strokeLineShape(new Phaser.Geom.Line(490,30,490,490)); g.strokeCircle(490,260,80);
+        g.strokeRect(40,150,55,220); g.strokeRect(885,150,55,220);
+        g.fillStyle(0x0b1d20,0.8); for (let i=0;i<20;i++){ g.fillRect(25+i*42,10,18,14); g.fillRect(25+i*42,496,18,14); }
+        this.fieldGraphics = g;
+      }
+
+      createBall() {
+        const g = this.add.graphics(); g.fillStyle(0xffffff,1); g.fillCircle(14,14,14); g.generateTexture('ballTex',28,28); g.destroy();
+        this.ball = this.physics.add.sprite(490,260,'ballTex'); this.ball.setDisplaySize(18,18); this.ball.body.setCircle(9); this.ball.setCollideWorldBounds(true); this.ball.setBounce(0.86); this.ball.setDepth(10);
+      }
+
+      createPlayers() {
+        this.teamA=[]; this.teamB=[]; this.players=[];
+        const homePositions=[{x:180,y:260},{x:260,y:150},{x:260,y:370},{x:360,y:200},{x:360,y:320}];
+        homePositions.forEach((p,i)=>{ const player=this.buildPlayer('A',i,p.x,p.y); this.teamA.push(player); this.players.push(player); });
+        homePositions.forEach((p,i)=>{ const player=this.buildPlayer('B',i+5,980-p.x,p.y); this.teamB.push(player); this.players.push(player); });
+        for(let i=0;i<this.players.length;i++) for(let j=i+1;j<this.players.length;j++) this.physics.add.collider(this.players[i].sprite,this.players[j].sprite);
+      }
+
+      buildPlayer(team,index,x,y){ const t = team==='A'?this.homeTeamIndex:this.awayTeamIndex; const color = teamData[t].primary; const g=this.add.graphics(); g.fillStyle(color,1); g.fillCircle(16,16,14); g.lineStyle(2,0x000000,0.3); g.strokeCircle(16,16,14); g.generateTexture(`p_${team}_${index}`,32,32); g.destroy(); const sprite=this.physics.add.sprite(x,y,`p_${team}_${index}`); sprite.setDisplaySize(28,28); sprite.setDepth(5); sprite.body.setCircle(12); sprite.setCollideWorldBounds(true); return {team,index,sprite,speed: team==='A'?150:144,kickPower:420,aiCooldown:0,role:'midfielder'} }
+
+      setTeams(homeIndex,awayIndex){ this.homeTeamIndex=Number(homeIndex); this.awayTeamIndex=Number(awayIndex); document.getElementById('homeLabel').textContent = teamData[this.homeTeamIndex].name; document.getElementById('awayLabel').textContent = teamData[this.awayTeamIndex].name; this.teamA.forEach((p,idx)=>{ const color=teamData[this.homeTeamIndex].primary; const g=this.add.graphics(); g.fillStyle(color,1); g.fillCircle(16,16,14); g.lineStyle(2,0x000000,0.3); g.strokeCircle(16,16,14); const tex=`p_${p.team}_${idx}`; g.generateTexture(tex,32,32); g.destroy(); p.sprite.setTexture(tex); }); this.teamB.forEach((p,idx)=>{ const color=teamData[this.awayTeamIndex].primary; const g=this.add.graphics(); g.fillStyle(color,1); g.fillCircle(16,16,14); g.lineStyle(2,0x000000,0.3); g.strokeCircle(16,16,14); const tex=`p_${p.team}_${idx}`; g.generateTexture(tex,32,32); g.destroy(); p.sprite.setTexture(tex); }); this.updateHUD(); }
+
+      setupInput(){ this.keys=this.input.keyboard.addKeys({up:'W',down:'S',left:'A',right:'D',kick:'K',sprint:'SHIFT',switch:'TAB'}); }
+      resetPositions(){ const homePositions=[{x:180,y:260},{x:260,y:150},{x:260,y:370},{x:360,y:200},{x:360,y:320}]; this.teamA.forEach((p,i)=>{ p.sprite.setPosition(homePositions[i].x,homePositions[i].y); p.sprite.body.setVelocity(0,0); }); this.teamB.forEach((p,i)=>{ p.sprite.setPosition(980-homePositions[i].x,homePositions[i].y); p.sprite.body.setVelocity(0,0); }); this.ball.setPosition(490,260); this.ball.body.setVelocity(0,0); }
+
+      updateHUD(){ document.getElementById('scoreText').textContent = `${this.scoreHome} - ${this.scoreAway}`; const mins=String(Math.floor(this.timeRemaining/60)).padStart(2,'0'); const secs=String(Math.floor(this.timeRemaining%60)).padStart(2,'0'); document.getElementById('clockText').textContent = `${mins}:${secs}`; document.getElementById('matchTimeLabel').textContent = `Match: ${this.currentHour}:00`; }
+
+      highlightControlledPlayer(){ this.teamA.forEach((p,idx)=> p.sprite.setScale(idx===this.controlIndex?1.25:1)); }
+
+      update(time,delta){ if(Phaser.Input.Keyboard.JustDown(this.keys.switch)){ this.controlIndex=(this.controlIndex+1)%this.teamA.length; this.highlightControlledPlayer(); }
+        if(this.isMatchRunning){ this.timeRemaining -= delta/1000; if(this.timeRemaining<=0){ this.timeRemaining=0; this.isMatchRunning=false; this.statusText.textContent='Full time. Reset to play again.'; } }
+        this.updatePlayerControl(); this.updateAI(delta); this.ball.body.velocity.x *= 0.995; this.ball.body.velocity.y *= 0.995; this.checkGoals(); this.updateHUD(); if(this.autoCycle){ const nextHour=(this.currentHour + (delta/1000)*0.1)%24; this.applyTimeOfDay(Math.floor(nextHour)); } }
+
+      updatePlayerControl(){ const cp=this.teamA[this.controlIndex]; if(!cp) return; const speed=cp.speed*(this.keys.sprint.isDown?1.75:1); let vx=0,vy=0; if(this.keys.left.isDown) vx-=speed; if(this.keys.right.isDown) vx+=speed; if(this.keys.up.isDown) vy-=speed; if(this.keys.down.isDown) vy+=speed; cp.sprite.body.setVelocity(vx,vy); if(Phaser.Input.Keyboard.JustDown(this.keys.kick)) this.tryKick(cp); }
+
+      updateAI(delta){ this.teamA.forEach((p,idx)=>{ if(idx===this.controlIndex) return; this.runAI(p,delta); }); this.teamB.forEach((p)=> this.runAI(p,delta)); }
+
+      runAI(player,delta){ const px=player.sprite.x; const py=player.sprite.y; const bx=this.ball.x; const by=this.ball.y; const dist=Phaser.Math.Distance.Between(px,py,bx,by); player.aiCooldown=Math.max(0,player.aiCooldown-delta); if(dist<70 && player.aiCooldown<=0){ this.tryKick(player); player.aiCooldown=900; return; } let targetX=bx; let targetY=by; if(player.team==='A'){ targetX=bx-160; targetY=by-35+(player.index%2)*70; } else { targetX=bx+160; targetY=by+35-(player.index%2)*70; } targetX=Phaser.Math.Clamp(targetX,70,910); targetY=Phaser.Math.Clamp(targetY,60,460); const dx=targetX-px; const dy=targetY-py; const length=Math.hypot(dx,dy)||1; player.sprite.body.setVelocity((dx/length)*player.speed,(dy/length)*player.speed); }
+
+      tryKick(player){ const dist=Phaser.Math.Distance.Between(player.sprite.x,player.sprite.y,this.ball.x,this.ball.y); if(dist>40) return; const targetX = player.team==='A'?980:0; const targetY=260; const dir=new Phaser.Math.Vector2(targetX-this.ball.x,targetY-this.ball.y).normalize(); this.ball.body.setVelocity(dir.x*player.kickPower,dir.y*player.kickPower); }
+
+      checkGoals(){ const inGoalHome = this.ball.x < 38 && Math.abs(this.ball.y - 260) < 110; const inGoalAway = this.ball.x > 942 && Math.abs(this.ball.y - 260) < 110; if((inGoalHome||inGoalAway) && (this.time.now - (this.ballResetTime||0) > 800)){ if(inGoalHome){ this.scoreAway += 1; this.statusText.textContent = `${teamData[this.awayTeamIndex].name} score!`; } else { this.scoreHome += 1; this.statusText.textContent = `${teamData[this.homeTeamIndex].name} score!`; } this.ballResetTime = this.time.now; this.resetPositions(); } }
+
+      startMatch(){ this.isMatchRunning=true; this.timeRemaining=this.matchDuration; this.scoreHome=0; this.scoreAway=0; this.resetPositions(); this.statusText.textContent='Kickoff!'; this.updateHUD(); }
+      resetMatch(){ this.isMatchRunning=false; this.timeRemaining=this.matchDuration; this.scoreHome=0; this.scoreAway=0; this.resetPositions(); this.statusText.textContent='Ready for kickoff.'; this.updateHUD(); }
+
+      applyTimeOfDay(hour){ this.currentHour=Phaser.Math.Clamp(hour,0,23); let darkness=0; if(this.currentHour>=6 && this.currentHour<=18){ const a=Math.abs(this.currentHour-12)/6; darkness=Phaser.Math.Clamp(a*0.35,0,0.35); } else { const n=this.currentHour>18? (this.currentHour-18)/6 : (6-this.currentHour)/6; darkness=0.42+Phaser.Math.Clamp(n,0,1)*0.48; } this.overlay.fillAlpha=Phaser.Math.Clamp(darkness*0.85,0,0.8); this.overlay.fillColor = darkness>0.5?0x091723:0x181818; const bgColor = darkness>0.5?0x0d1d26:0x23944d; this.cameras.main.setBackgroundColor(bgColor); this.stadiumLights.clear(true,true); if(darkness>0.45){ for(let i=0;i<8;i++){ const light=this.add.graphics(); light.fillStyle(0xfff4b0,0.08); light.fillCircle(120+i*110,48,24); this.stadiumLights.add(light); } } document.getElementById('hourRange').value = String(this.currentHour); this.hourLabel.textContent = `${this.currentHour}:00`; this.matchTimeLabel.textContent = `Match: ${this.currentHour}:00`; }
+    }
+
+    function initGame(){ game = new Phaser.Game({ type: Phaser.AUTO, width: 980, height: 520, parent: 'game-container', backgroundColor: '#1d8d48', physics: { default: 'arcade', arcade: { debug:false } }, scene: [FootballScene] }); }
+
+    document.getElementById('startBtn').addEventListener('click', () => { if(sceneRef) sceneRef.startMatch(); });
+    document.getElementById('resetBtn').addEventListener('click', () => { if(sceneRef) sceneRef.resetMatch(); });
+    document.getElementById('hourRange').addEventListener('input', (e) => { if(sceneRef) sceneRef.applyTimeOfDay(Number(e.target.value)); });
+    document.querySelectorAll('.time-btn').forEach((btn)=> btn.addEventListener('click', ()=>{ const hour = Number(btn.dataset.hour); if(sceneRef) sceneRef.applyTimeOfDay(hour); }));
+    document.getElementById('autoBtn').addEventListener('click', ()=>{ const btn=document.getElementById('autoBtn'); if(!sceneRef) return; sceneRef.autoCycle = !sceneRef.autoCycle; btn.textContent = `Auto Cycle: ${sceneRef.autoCycle ? 'On' : 'Off'}`; });
+
+    buildTeamOptions(); initGame(); window.addEventListener('load', ()=>{ if(sceneRef){ sceneRef.applyTimeOfDay(18); sceneRef.updateHUD(); } });
+  </script>
+</body>
+</html>
